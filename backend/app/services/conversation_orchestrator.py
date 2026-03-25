@@ -3,6 +3,8 @@ import json
 from anthropic import Anthropic
 from supabase import Client
 
+from app.services.conversation_monitor import evaluate_conversation, should_check
+
 
 CONVERSATION_CONTEXT = """You are having a getting-to-know-you conversation with someone new. Be authentic to your personality. Explore values, interests, humor, and what matters in a partner. Keep responses conversational — 2-4 sentences, natural length."""
 
@@ -84,6 +86,18 @@ def run_conversation_step(
 
         new_turn = sess["current_turn"] + 1
         is_done = new_turn >= sess["max_turns"]
+
+        # Monitor check every 5 messages
+        if should_check(new_turn):
+            all_messages = load_conversation_history(sb, match_id)
+            eval_result = evaluate_conversation(anthropic_client, all_messages)
+
+            if eval_result.get("recommendation") in (
+                "escalate_to_meetup",
+                "end_low_compatibility",
+                "end_stalled",
+            ):
+                is_done = True
 
         sb.table("conversation_sessions").update({
             "current_turn": new_turn,
